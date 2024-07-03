@@ -2,11 +2,12 @@
 from sys import platform, implementation
 from mqtt_as import config
 from machine import Pin
-from settings import BROKER, SSID, PASS, MQTT_USER, MQTT_PASS
+from settings import SSID, PASS, BROKER, MQTT_PORT, MQTT_USER, MQTT_PASS
 
-config['server'] = BROKER
 config['ssid'] = SSID
 config['wifi_pw'] = PASS
+config['server'] = BROKER
+config['port'] = int(MQTT_PORT)
 config['user'] = MQTT_USER
 config['password'] = MQTT_PASS
  
