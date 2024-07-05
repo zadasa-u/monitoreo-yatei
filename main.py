@@ -18,14 +18,12 @@ PIN_LED = 14
 d = dht.DHT22(machine.Pin(PIN_DHT))
 led = machine.Pin(PIN_LED, machine.Pin.OUT)
 led.value(1) # led apagado (activo en bajo)
-PL = 1 # Periodo de lectura del estado del led (segundos)
 
 # Variables globales:
 params = {
     'temperatura':0.0, # grados Celsius 
     'humedad':0.0,     # %
     'periodo':30,      # segundos
-    'led':'off' if led.value() else 'on'
 }
 
 # Funciones para base de datos
@@ -57,6 +55,8 @@ def readdb():
 
 # Funciones generales
 def read_dht22():
+    print("Leyendo sensor...")
+    led.value(0) # led encendido
     try:
         d.measure()
         try:
@@ -68,7 +68,9 @@ def read_dht22():
         except OSError as e:
             print("sin sensor humedad")
     except OSError as e:
-        print("sin sensor") 
+        print("sin sensor")
+    
+    led.value(1) # led apagado
 
 # Funciones para configuracion del cliente: sub_cb, wifi_han, conn_han
 def sub_cb(topic, msg, retained):
@@ -90,15 +92,6 @@ def sub_cb(topic, msg, retained):
             mod = True
         except ValueError:
             print(f'Error: No se puede asignar el valor "{dmsg}" a "{dtopic}"')
-    if dtopic == 'orden-led':
-        print(f'Mensaje decodificado: {dmsg}')
-        if dmsg == 'True':
-            led.value(0) # encendido (activo en bajo)
-        elif dmsg == 'False':
-            led.value(1) # apagado
-        
-        # actualizar parametro si es necesario
-        params['led'] = 'off' if led.value() else 'on'
 
     if mod is True:
         storedb(params['periodo'])
@@ -114,11 +107,11 @@ async def conn_han(client):
 
 # Funciones principales: main
 async def main(client):
-    #await client.connect()
-    #await asyncio.sleep(2)
-    
-    while True:
+    await client.connect()
+    await asyncio.sleep(2)
 
+    while True:
+        print("main()")
         read_dht22()
 
         print('Publicando parametros: ', params)
@@ -126,47 +119,38 @@ async def main(client):
 
         await asyncio.sleep(params['periodo'])
 
-async def led_status():
-    valor_anterior = led.value()
-    while True:
-        if led_value() != valor_anterior:
-            # enviar estado actual del led (True: encendido, False: apagado)
-            respuesta = not led.value()==1
-            print(f'Publicando estado del led: {respuesta}')
-            await client.publish(f'{BASE_TOPIC}respuesta-led',f'{respuesta}',qos=1)
-            valor_anterior = led.value()
-        await asyncio.sleep(PL)
-
-async def tasks(client):
-    await client.connect()
-    await asyncio.sleep(2)
-    await asyncio.gather(main(client), led_status(client))
-
-# Access Data Base
-if 'db' not in os.listdir():
-    print('Base de datos NO encontrada. CREANDO NUEVA')
-    storedb(params['periodo'])
-else:
-    print('Base de datos encontrada. LEYENDO DATOS')
-    try:
-        params['periodo'] = readdb()
-    except:
-        print('No se encontraron datos. GENERANDO')
+if __name__ == "__main__":
+    # Access Data Base
+    if 'db' not in os.listdir():
+        print('Base de datos NO encontrada. CREANDO NUEVA')
         storedb(params['periodo'])
+    else:
+        print('Base de datos encontrada. LEYENDO DATOS')
+        try:
+            params['periodo'] = readdb()
+        except:
+            print('No se encontraron datos. GENERANDO')
+            storedb(params['periodo'])
 
-# Define client configuration
-config['subs_cb'] = sub_cb
-config['connect_coro'] = conn_han
-config['wifi_coro'] = wifi_han
-config['ssl'] = True
+    # Define client configuration
+    config['subs_cb'] = sub_cb
+    config['connect_coro'] = conn_han
+    config['wifi_coro'] = wifi_han
+    config['ssl'] = True
 
-# Set up client
-MQTTClient.DEBUG = True  # Optional
-client = MQTTClient(config)
+    # Set up client
+    MQTTClient.DEBUG = True  # Optional
+    client = MQTTClient(config)
 
-try:
-    print("Iniciando main()")
-    asyncio.run(main(client))
-finally:
-    client.close()
-    asyncio.new_event_loop()
+    try:
+        #print("Primera lectura del sensor")
+        read_dht22()
+        read_dht22()
+        print(f"Temperatura: {params["temperatura"]} C")
+        print(f"Humedad    : {params["humedad"]} %")
+        print("Iniciando tareas")
+        #asyncio.run(tasks(client))
+        asyncio.run(main(client))
+    finally:
+        client.close()
+        asyncio.new_event_loop()
